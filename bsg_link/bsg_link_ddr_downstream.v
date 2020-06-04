@@ -47,8 +47,8 @@ module bsg_link_ddr_downstream
   // Set use_extra_data_bit_p=1 to utilize this extra bit
   // MUST MATCH paired bsg_link_ddr_upstream setting
   ,parameter use_extra_data_bit_p = 0
-  ,localparam ddr_width_lp  = channel_width_p*2 + use_extra_data_bit_p
-  ,localparam sipo_ratio_lp = width_p/(ddr_width_lp*num_channels_p)
+  ,parameter ddr_width_lp  = channel_width_p*2 + use_extra_data_bit_p
+  ,parameter sipo_ratio_lp = width_p/(ddr_width_lp*num_channels_p)
   )
 
   (// All reset / control signals are synchronous to core_clk

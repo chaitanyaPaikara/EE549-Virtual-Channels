@@ -15,9 +15,9 @@ module bsg_wormhole_router_test_node_client
   ,parameter int cord_markers_pos_p[dims_p:0] = '{5, 4, 0}
   ,parameter len_width_p = "inv"
 
-  ,localparam num_nets_lp = 2
-  ,localparam bsg_ready_and_link_sif_width_lp = `bsg_ready_and_link_sif_width(flit_width_p)  
-  ,localparam cord_width_lp = cord_markers_pos_p[dims_p]
+  ,parameter num_nets_lp = 2
+  ,parameter bsg_ready_and_link_sif_width_lp = `bsg_ready_and_link_sif_width(flit_width_p)  
+  ,parameter cord_width_lp = cord_markers_pos_p[dims_p]
   )
 
   (input clk_i

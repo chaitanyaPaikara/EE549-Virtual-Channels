@@ -55,8 +55,8 @@ module bsg_link_ddr_upstream
   // Set use_extra_data_bit_p=1 to utilize this extra bit
   // MUST MATCH paired bsg_link_ddr_downstream setting
   ,parameter use_extra_data_bit_p = 0
-  ,localparam ddr_width_lp  = channel_width_p*2 + use_extra_data_bit_p
-  ,localparam piso_ratio_lp = width_p/(ddr_width_lp*num_channels_p)
+  ,parameter ddr_width_lp  = channel_width_p*2 + use_extra_data_bit_p
+  ,parameter piso_ratio_lp = width_p/(ddr_width_lp*num_channels_p)
   )
 
   (// Core side
