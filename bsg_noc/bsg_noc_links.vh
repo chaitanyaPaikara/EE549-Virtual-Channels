@@ -4,6 +4,9 @@
 // aka ready & valid
 `define bsg_ready_and_link_sif_width(in_data_width) (in_data_width+2)
 
+// aka ready & valid -- virtual channel
+`define bsg_ready_and_link_vc_sif_width(in_data_width, num_vc) (in_data_width+2*(num_vc))
+
 // aka ready->valid
 `define bsg_ready_then_link_sif_width(in_data_width) ((in_data_width)+2)
 
@@ -14,6 +17,13 @@
    typedef struct packed {                                                \
       logic       v;                                                      \
       logic       ready_and_rev;                                          \
+      logic [in_data_width-1:0] data;                                     \
+  } in_struct_name
+
+`define declare_bsg_ready_and_link_vc_sif_s(in_data_width,in_struct_name,num_vc)    \
+   typedef struct packed {                                                \
+      logic       [num_vc-1:0] v;                                         \
+      logic       [num_vc-1:0] ready_and_rev;                             \
       logic [in_data_width-1:0] data;                                     \
   } in_struct_name
 

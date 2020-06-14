@@ -34,7 +34,7 @@ module bsg_wormhole_network_tester
   
   // How many streams of traffic are merged in channel tunnel
   // In this testbench the number of traffics is 2 (req and resp traffic)
-  ,parameter ct_num_in_p = 2
+  ,parameter ct_num_in_p = 1
   
   // Tag bits are for channel_tunnel_wormhole to mux and demux packets
   // If we are merging m traffics in channel tunnel, then tag bits shoule 
@@ -156,6 +156,7 @@ module bsg_wormhole_network_tester
   localparam in_node_cord  = 3;
   
   `declare_bsg_ready_and_link_sif_s(flit_width_p,bsg_ready_and_link_sif_s);
+  `declare_bsg_ready_and_link_vc_sif_s(flit_width_p,bsg_ready_and_link_vc_sif_s,2);
   
   // Loopback node control
   logic en_0, en_1;
@@ -181,8 +182,8 @@ module bsg_wormhole_network_tester
   logic [num_channels_p-1:0] io_downstream_reset_0, io_downstream_reset_1;
   
   
-  bsg_ready_and_link_sif_s [ct_num_in_p-1:0] out_node_link_li;
-  bsg_ready_and_link_sif_s [ct_num_in_p-1:0] out_node_link_lo;
+  bsg_ready_and_link_sif_s out_node_link_li;
+  bsg_ready_and_link_sif_s out_node_link_lo;
   
   bsg_ready_and_link_sif_s [ct_num_in_p-1:0][dirs_p-1:0] out_router_link_li;
   bsg_ready_and_link_sif_s [ct_num_in_p-1:0][dirs_p-1:0] out_router_link_lo;
@@ -209,15 +210,9 @@ module bsg_wormhole_network_tester
   logic [ct_num_in_p-1:0] in_ct_fifo_valid_li, in_ct_fifo_yumi_lo;
   logic [ct_num_in_p-1:0][flit_width_p-1:0] in_ct_fifo_data_lo, in_ct_fifo_data_li;
   
-  bsg_ready_and_link_sif_s [ct_num_in_p-1:0][dirs_p-1:0] in_router_link_li;
-  bsg_ready_and_link_sif_s [ct_num_in_p-1:0][dirs_p-1:0] in_router_link_lo;
-  
-  bsg_ready_and_link_sif_s [ct_num_in_p-1:0] in_node_link_li;
-  bsg_ready_and_link_sif_s [ct_num_in_p-1:0] in_node_link_lo;
-  
-  
-  genvar i;
-
+  bsg_ready_and_link_sif_s in_node_link_li;
+  bsg_ready_and_link_sif_s in_node_link_lo;
+  bsg_ready_and_link_vc_sif_s [dirs_p-1:0] vc_0_link_i, vc_0_link_o, vc_1_link_i, vc_1_link_o;
 
   bsg_wormhole_router_test_node_master
  #(.flit_width_p(flit_width_p)
@@ -241,211 +236,50 @@ module bsg_wormhole_network_tester
   ,.link_o          (out_node_link_lo)
   );
   
-  
-  for (i = 0; i < ct_num_in_p; i++) 
-  begin: r0
-  
-    bsg_wormhole_router
-   #(.flit_width_p      (flit_width_p)
-    ,.dims_p            (dims_p)
-    ,.cord_markers_pos_p(cord_markers_pos_p)
-    ,.routing_matrix_p  (routing_matrix_p)
-    ,.len_width_p       (len_width_p)
-    )
-    router_0
-    (.clk_i    (router_clk_0)
-	,.reset_i  (router_reset_0)
-	,.my_cord_i(cord_width_lp'(out_node_cord))
-	,.link_i   (out_router_link_li[i])
-	,.link_o   (out_router_link_lo[i])
-	);
+  // Add VC based routers - bsg_wormhole_routers
 
-    assign out_node_link_li[i] = out_router_link_lo[i][P];
-    assign out_router_link_li[i][P] = out_node_link_lo[i];
-    
+    assign vc_0_link_i[P].data = out_node_link_lo.data; // added
+    assign vc_0_link_i[P].ready_and_rev = {out_node_link_lo.ready_and_rev, out_node_link_lo.ready_and_rev};
+
+    assign out_node_link_li.data = vc_0_link_o[P].data;
+    assign out_node_link_li.v = |vc_0_link_o[P].v;
+    assign out_node_link_li.ready_and_rev = |vc_0_link_o[P].ready_and_rev;
+  
     // Stub
-    assign out_router_link_li[i][W].v             = 1'b0;
-    assign out_router_link_li[i][W].ready_and_rev = 1'b1;
-    
-    // Must add a fifo here, convert yumi_o to ready_o
-    bsg_two_fifo
-   #(.width_p(flit_width_p))
-    out_ct_fifo
-    (.clk_i  (router_clk_0  )
-    ,.reset_i(router_reset_0)
-    ,.ready_o(out_router_link_li[i][E].ready_and_rev)
-    ,.data_i (out_router_link_lo[i][E].data         )
-    ,.v_i    (out_router_link_lo[i][E].v            )
-    ,.v_o    (out_ct_fifo_valid_lo[i])
-    ,.data_o (out_ct_fifo_data_lo[i] )
-    ,.yumi_i (out_ct_fifo_yumi_li[i] )
+    assign vc_0_link_i[W].v             = 2'b00;
+    assign vc_0_link_i[W].ready_and_rev = 2'b11;
+
+  bsg_round_robin_1_to_n
+    #(.width_p(flit_width_p))
+    robin_0
+    (
+      .clk_i(clk_i),
+      .reset_i(reset_i),
+      .valid_i(out_node_link_lo.v),
+      .ready_o(),
+      .valid_o(vc_0_link_i[P].v),
+      .ready_i(1'b1)
     );
-    
-    assign out_router_link_li [i][E].v    = out_ct_fifo_valid_li[i];
-    assign out_router_link_li [i][E].data = out_ct_fifo_data_li [i];
-    assign out_ct_fifo_yumi_lo[i]         = out_router_link_li  [i][E].v 
-                                          & out_router_link_lo  [i][E].ready_and_rev;
-  end
 
-  bsg_channel_tunnel 
- #(.width_p                (flit_width_p)
-  ,.num_in_p               (ct_num_in_p)
-  ,.remote_credits_p       (ct_remote_credits_p)
-  ,.use_pseudo_large_fifo_p(ct_use_pseudo_large_fifo_p)
-  ,.lg_credit_decimation_p (ct_lg_credit_decimation_p)
-  )
-  out_ct
-  (.clk_i  (router_clk_0)
-  ,.reset_i(router_reset_0)
+    bsg_virtual_channel_router
+    #(.flit_width_p      (flit_width_p)
+      ,.dims_p            (dims_p)
+      ,.cord_markers_pos_p(cord_markers_pos_p)
+      ,.routing_matrix_p  (routing_matrix_p)
+      ,.len_width_p       (len_width_p)
+      )
+      router_0
+      (.clk_i    (router_clk_0)
+      ,.reset_i  (router_reset_0)
+      ,.my_cord_i(cord_width_lp'(out_node_cord))
+      ,.link_i   (vc_0_link_i)
+      ,.link_o   (vc_0_link_o)
+      );
 
-  // incoming multiplexed data
-  ,.multi_data_i(out_ct_data_li)
-  ,.multi_v_i   (out_ct_valid_li)
-  ,.multi_yumi_o(out_ct_yumi_lo)
+  assign vc_1_link_i[W] = vc_0_link_o[E];
+  assign vc_0_link_i[E] = vc_1_link_o[W];
 
-  // outgoing multiplexed data
-  ,.multi_data_o(out_ct_data_lo)
-  ,.multi_v_o   (out_ct_valid_lo)
-  ,.multi_yumi_i(out_ct_ready_li & out_ct_valid_lo)
-
-  // incoming demultiplexed data
-  ,.data_i(out_ct_fifo_data_lo)
-  ,.v_i   (out_ct_fifo_valid_lo)
-  ,.yumi_o(out_ct_fifo_yumi_li)
-
-  // outgoing demultiplexed data
-  ,.data_o(out_ct_fifo_data_li)
-  ,.v_o   (out_ct_fifo_valid_li)
-  ,.yumi_i(out_ct_fifo_yumi_lo)
-  );
-  
-  bsg_link_ddr_upstream
- #(.width_p        (link_width_p)
-  ,.channel_width_p(channel_width_p)
-  ,.num_channels_p (num_channels_p)
-  ,.lg_fifo_depth_p(lg_fifo_depth_p)
-  ,.lg_credit_to_token_decimation_p(lg_credit_to_token_decimation_p)
-  ) link_upstream_0
-  (.core_clk_i         (router_clk_0)
-  ,.io_clk_i           (io_upstream_clk_0)
-  ,.core_link_reset_i  (core_upstream_downstream_reset_0)
-  ,.io_link_reset_i    (io_upstream_reset_0)
-  ,.async_token_reset_i(token_reset_0)
-  
-  ,.core_data_i (out_ct_data_lo)
-  ,.core_valid_i(out_ct_valid_lo)
-  ,.core_ready_o(out_ct_ready_li)
-
-  ,.io_clk_r_o  (edge_clk_0)
-  ,.io_data_r_o (edge_data_0)
-  ,.io_valid_r_o(edge_valid_0)
-  ,.token_clk_i (edge_token_0)
-  );
-  
-  
-  bsg_link_ddr_downstream
- #(.width_p        (link_width_p)
-  ,.channel_width_p(channel_width_p)
-  ,.num_channels_p (num_channels_p)
-  ,.lg_fifo_depth_p(lg_fifo_depth_p)
-  ,.lg_credit_to_token_decimation_p(lg_credit_to_token_decimation_p)
-  ) link_downstream_0
-  (.core_clk_i       (router_clk_0)
-  ,.core_link_reset_i(core_upstream_downstream_reset_0)
-  ,.io_link_reset_i  (io_downstream_reset_0)
-  
-  ,.core_data_o   (out_ct_data_li)
-  ,.core_valid_o  (out_ct_valid_li)
-  ,.core_yumi_i   (out_ct_yumi_lo)
-
-  ,.io_clk_i      (edge_clk_1)
-  ,.io_data_i     (edge_data_1)
-  ,.io_valid_i    (edge_valid_1)
-  ,.core_token_r_o(edge_token_1)
-  );
-  
-  
-  bsg_link_ddr_upstream
- #(.width_p        (link_width_p)
-  ,.channel_width_p(channel_width_p)
-  ,.num_channels_p (num_channels_p)
-  ,.lg_fifo_depth_p(lg_fifo_depth_p)
-  ,.lg_credit_to_token_decimation_p(lg_credit_to_token_decimation_p)
-  ) link_upstream_1
-  (.core_clk_i         (router_clk_1)
-  ,.io_clk_i           (io_upstream_clk_1)
-  ,.core_link_reset_i  (core_upstream_downstream_reset_1)
-  ,.io_link_reset_i    (io_upstream_reset_1)
-  ,.async_token_reset_i(token_reset_1)
-  
-  ,.core_data_i (in_ct_data_lo)
-  ,.core_valid_i(in_ct_valid_lo)
-  ,.core_ready_o(in_ct_ready_li)
-
-  ,.io_clk_r_o  (edge_clk_1)
-  ,.io_data_r_o (edge_data_1)
-  ,.io_valid_r_o(edge_valid_1)
-  ,.token_clk_i (edge_token_1)
-  );
-  
-  
-  bsg_link_ddr_downstream
- #(.width_p        (link_width_p)
-  ,.channel_width_p(channel_width_p)
-  ,.num_channels_p (num_channels_p)
-  ,.lg_fifo_depth_p(lg_fifo_depth_p)
-  ,.lg_credit_to_token_decimation_p(lg_credit_to_token_decimation_p)
-  ) link_downstream_1
-  (.core_clk_i       (router_clk_1)
-  ,.core_link_reset_i(core_upstream_downstream_reset_1)
-  ,.io_link_reset_i  (io_downstream_reset_1)
-  
-  ,.core_data_o   (in_ct_data_li)
-  ,.core_valid_o  (in_ct_valid_li)
-  ,.core_yumi_i   (in_ct_yumi_lo)
-  
-  ,.io_clk_i      (edge_clk_0)
-  ,.io_data_i     (edge_data_0)
-  ,.io_valid_i    (edge_valid_0)
-  ,.core_token_r_o(edge_token_0)
-  );
-
-  bsg_channel_tunnel 
- #(.width_p                (flit_width_p)
-  ,.num_in_p               (ct_num_in_p)
-  ,.remote_credits_p       (ct_remote_credits_p)
-  ,.use_pseudo_large_fifo_p(ct_use_pseudo_large_fifo_p)
-  ,.lg_credit_decimation_p (ct_lg_credit_decimation_p)
-  )
-  in_ct
-  (.clk_i  (router_clk_1)
-  ,.reset_i(router_reset_1)
-
-  // incoming multiplexed data
-  ,.multi_data_i(in_ct_data_li)
-  ,.multi_v_i   (in_ct_valid_li)
-  ,.multi_yumi_o(in_ct_yumi_lo)
-
-  // outgoing multiplexed data
-  ,.multi_data_o(in_ct_data_lo)
-  ,.multi_v_o   (in_ct_valid_lo)
-  ,.multi_yumi_i(in_ct_ready_li & in_ct_valid_lo)
-
-  // incoming demultiplexed data
-  ,.data_i(in_ct_fifo_data_lo)
-  ,.v_i   (in_ct_fifo_valid_lo)
-  ,.yumi_o(in_ct_fifo_yumi_li)
-
-  // outgoing demultiplexed data
-  ,.data_o(in_ct_fifo_data_li)
-  ,.v_o   (in_ct_fifo_valid_li)
-  ,.yumi_i(in_ct_fifo_yumi_lo)
-  );
-  
-  for (i = 0; i < ct_num_in_p; i++) 
-  begin: r1
-  
-    bsg_wormhole_router
+    bsg_virtual_channel_router
    #(.flit_width_p      (flit_width_p)
     ,.dims_p            (dims_p)
     ,.cord_markers_pos_p(cord_markers_pos_p)
@@ -454,54 +288,49 @@ module bsg_wormhole_network_tester
     ) 
     router_1
     (.clk_i    (router_clk_1)
-	,.reset_i  (router_reset_1)
-	,.my_cord_i(cord_width_lp'(in_node_cord))
-	,.link_i   (in_router_link_li[i])
-	,.link_o   (in_router_link_lo[i])
-	);
-    
-    assign in_node_link_li[i] = in_router_link_lo[i][P];
-    assign in_router_link_li[i][P] = in_node_link_lo[i];
-    
-    // Stub
-    assign in_router_link_li[i][E].v             = 1'b0;
-    assign in_router_link_li[i][E].ready_and_rev = 1'b1;
-    
-    // Must add a fifo here, convert yumi_o to ready_o
-    bsg_two_fifo
-   #(.width_p(flit_width_p))
-    in_ct_fifo
-    (.clk_i  (router_clk_1  )
-    ,.reset_i(router_reset_1)
-    ,.ready_o(in_router_link_li[i][W].ready_and_rev)
-    ,.data_i (in_router_link_lo[i][W].data         )
-    ,.v_i    (in_router_link_lo[i][W].v            )
-    ,.v_o    (in_ct_fifo_valid_lo[i])
-    ,.data_o (in_ct_fifo_data_lo[i] )
-    ,.yumi_i (in_ct_fifo_yumi_li[i] )
+    ,.reset_i  (router_reset_1)
+    ,.my_cord_i(cord_width_lp'(in_node_cord))
+    ,.link_i   (vc_1_link_i)
+    ,.link_o   (vc_1_link_o)
+    );  
+
+  bsg_round_robin_1_to_n
+    #(.width_p(flit_width_p))
+    robin_1
+    (
+      .clk_i(clk_i),
+      .reset_i(reset_i),
+      .valid_i(in_node_link_lo.v),
+      .ready_o(),
+      .valid_o(vc_1_link_i[P].v),
+      .ready_i(1'b1)
     );
-    
-    assign in_router_link_li [i][W].v    = in_ct_fifo_valid_li[i];
-    assign in_router_link_li [i][W].data = in_ct_fifo_data_li [i];
-    assign in_ct_fifo_yumi_lo[i]         = in_router_link_li  [i][W].v 
-                                         & in_router_link_lo  [i][W].ready_and_rev;
-  end
 
   bsg_wormhole_router_test_node_client
- #(.flit_width_p(flit_width_p)
-  ,.dims_p(dims_p)
-  ,.cord_markers_pos_p(cord_markers_pos_p)
-  ,.len_width_p(len_width_p)
-  ) in_node
-  (.clk_i           (router_clk_1)
-  ,.reset_i         (router_reset_1)
+  #(.flit_width_p(flit_width_p)
+    ,.dims_p(dims_p)
+    ,.cord_markers_pos_p(cord_markers_pos_p)
+    ,.len_width_p(len_width_p)
+    ) in_node
+    (.clk_i           (router_clk_1)
+    ,.reset_i         (router_reset_1)
 
-  ,.dest_cord_i     (cord_width_lp'(out_node_cord))
+    ,.dest_cord_i     (cord_width_lp'(out_node_cord))
+    
+    ,.link_i          (in_node_link_li)
+    ,.link_o          (in_node_link_lo)
+    );
+
+  assign vc_1_link_i[P].data = in_node_link_lo.data; // added
+  assign vc_1_link_i[P].ready_and_rev = {in_node_link_lo.ready_and_rev, in_node_link_lo.ready_and_rev};
+
+  assign in_node_link_li.data = vc_1_link_o[P].data;
+  assign in_node_link_li.v = |vc_1_link_o[P].v;
+  assign in_node_link_li.ready_and_rev = |vc_1_link_o[P].ready_and_rev;
   
-  ,.link_i          (in_node_link_li)
-  ,.link_o          (in_node_link_lo)
-  );
-  
+  // Stub
+  assign vc_1_link_i[E].v             = 2'b00;
+  assign vc_1_link_i[E].ready_and_rev = 2'b11; 
 
   // Simulation of Clock
   always #3 router_clk_0 = ~router_clk_0;
